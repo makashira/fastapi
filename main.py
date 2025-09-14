@@ -24,8 +24,8 @@ app = FastAPI()
 download_folder = "downloads"
 os.makedirs(download_folder, exist_ok=True)
 
-# URL для доступа к медиа
-BASE_URL = "https://kali-linux-docker-production-ece2.up.railway.app"
+# Правильный URL для доступа к медиа
+BASE_URL = "https://fastapi-production-100d.up.railway.app"
 
 # Подключение папки со статикой
 app.mount("/media", StaticFiles(directory=download_folder), name="media")
@@ -35,9 +35,6 @@ templates = Jinja2Templates(directory="templates")
 
 # Словарь для хранения временных данных, таких как phone_code_hash
 auth_data = {}
-
-# Создаем Telegram клиент один раз для всей сессии
-client = None
 
 # Функция извлечения username из ссылки или имени канала
 def extract_username(channel: str) -> str:
@@ -63,6 +60,7 @@ async def authenticate(request: Request, phone: str = Form(None), code: str = Fo
     # Шаг 1: Ввод номера телефона
     if phone and not code and not password:
         try:
+            # Отправляем код на номер телефона и сохраняем phone_code_hash
             result = await client.send_code_request(phone)
             auth_data['phone_code_hash'] = result.phone_code_hash  # Сохраняем phone_code_hash
             return templates.TemplateResponse("login_form.html", {"request": request, "step": "code", "phone": phone})
@@ -72,6 +70,7 @@ async def authenticate(request: Request, phone: str = Form(None), code: str = Fo
     # Шаг 2: Ввод кода
     if code and not password:
         try:
+            # Используем phone_code_hash для авторизации
             await client.sign_in(phone, code, phone_code_hash=auth_data['phone_code_hash'])
         except SessionPasswordNeededError:
             return templates.TemplateResponse("login_form.html", {"request": request, "step": "password", "phone": phone})
@@ -93,11 +92,9 @@ async def get_post_media(
     channel: str = Query(..., description="Имя канала или ссылка на него"),
     post_id: int = Query(..., description="ID сообщения в канале")
 ):
-    # Если клиент не подключен, пытаемся подключиться
-    if not client.is_connected():
-        await client.connect()
-
     username = extract_username(channel)
+    client = TelegramClient(session_name, api_id, api_hash)
+    await client.start()
 
     try:
         msg = await client.get_messages(username, ids=post_id)
@@ -138,9 +135,7 @@ async def get_post_media(
                     result["media"]["media_1"] = media_info
 
     finally:
-        # Не отключаем клиента, если только он не был последним запросом
-        if client.is_connected():
-            await client.disconnect()
+        await client.disconnect()
 
     return {"status": "ok", "post": result}
 
