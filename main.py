@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
+from telethon.tl.types import Message  # Добавляем импорт Message
 import os
 import re
 from dotenv import load_dotenv
