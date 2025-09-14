@@ -25,7 +25,7 @@ download_folder = "downloads"
 os.makedirs(download_folder, exist_ok=True)
 
 # URL для доступа к медиа
-BASE_URL = "https://fastapi-production-100d.up.railway.app"
+BASE_URL = "https://kali-linux-docker-production-ece2.up.railway.app"
 
 # Подключение папки со статикой
 app.mount("/media", StaticFiles(directory=download_folder), name="media")
