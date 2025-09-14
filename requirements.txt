@@ -1,4 +1,4 @@
 fastapi
 telethon
 python-dotenv
-uvicorn
+hypercorn
