@@ -14,5 +14,12 @@
         <input type="text" id="code" name="code" required><br><br>
         <button type="submit">Submit</button>
     </form>
+
+    <!-- Добавляем форму для пароля, если требуется -->
+    <form method="POST" action="/authenticate">
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required><br><br>
+        <button type="submit">Submit</button>
+    </form>
 </body>
 </html>
