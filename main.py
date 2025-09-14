@@ -1,8 +1,13 @@
+from fastapi import FastAPI, Query, HTTPException, Form
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from telethon import TelegramClient
-from telethon.tl.types import Message  # Добавьте этот импорт
+from telethon.tl.types import Message
 import os
 import re
 from dotenv import load_dotenv
+from fastapi import Request
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -24,6 +29,9 @@ BASE_URL = "https://kali-linux-docker-production-ece2.up.railway.app"
 # Подключение папки со статикой
 app.mount("/media", StaticFiles(directory=download_folder), name="media")
 
+# Инициализация шаблонов
+templates = Jinja2Templates(directory="templates")
+
 # Функция извлечения username из ссылки или имени канала
 def extract_username(channel: str) -> str:
     channel = re.sub(r"https?://t\.me/", "", channel)
@@ -33,9 +41,23 @@ def extract_username(channel: str) -> str:
         return match.group(0)
     raise HTTPException(status_code=400, detail="Неверный формат имени канала")
 
-@app.get("/")
-async def root():
-    return {"message": "Post media API is running"}
+@app.get("/", response_class=HTMLResponse)
+async def get_form(request: Request):
+    return templates.TemplateResponse("login_form.html", {"request": request})
+
+@app.post("/authenticate")
+async def authenticate(request: Request, phone: str = Form(...), code: str = Form(...)):
+    # Инициализация клиента Telegram
+    client = TelegramClient(session_name, api_id, api_hash)
+    await client.connect()
+    try:
+        # Отправляем код на номер
+        await client.send_code_request(phone)
+        # Авторизуемся с введенным кодом
+        await client.sign_in(phone, code)
+        return {"status": "success", "message": "Successfully authenticated"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/get_post_media")
 async def get_post_media(
@@ -89,7 +111,6 @@ async def get_post_media(
 
     return {"status": "ok", "post": result}
 
-# Функция обработки и скачивания медиа с добавлением номера
 async def process_media(msg: Message, media_index: int = 0):
     if not msg.media:
         return None
