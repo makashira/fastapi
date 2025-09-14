@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
-from telethon.tl.types import Message  # Добавляем импорт Message
+from telethon.tl.types import Message
 import os
 import re
 from dotenv import load_dotenv
@@ -33,6 +33,9 @@ app.mount("/media", StaticFiles(directory=download_folder), name="media")
 # Инициализация шаблонов
 templates = Jinja2Templates(directory="templates")
 
+# Словарь для хранения временных данных, таких как phone_code_hash
+auth_data = {}
+
 # Функция извлечения username из ссылки или имени канала
 def extract_username(channel: str) -> str:
     channel = re.sub(r"https?://t\.me/", "", channel)
@@ -56,7 +59,9 @@ async def authenticate(request: Request, phone: str = Form(None), code: str = Fo
     # Шаг 1: Ввод номера телефона
     if phone and not code and not password:
         try:
-            await client.send_code_request(phone)
+            # Отправляем код на номер телефона и сохраняем phone_code_hash
+            result = await client.send_code_request(phone)
+            auth_data['phone_code_hash'] = result.phone_code_hash  # Сохраняем phone_code_hash
             return templates.TemplateResponse("login_form.html", {"request": request, "step": "code", "phone": phone})
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Ошибка при отправке кода: {str(e)}")
@@ -64,7 +69,8 @@ async def authenticate(request: Request, phone: str = Form(None), code: str = Fo
     # Шаг 2: Ввод кода
     if code and not password:
         try:
-            await client.sign_in(phone, code)
+            # Используем phone_code_hash для авторизации
+            await client.sign_in(phone, code, phone_code_hash=auth_data['phone_code_hash'])
         except SessionPasswordNeededError:
             return templates.TemplateResponse("login_form.html", {"request": request, "step": "password", "phone": phone})
         except Exception as e:
