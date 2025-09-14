@@ -1,10 +1,12 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Form
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from telethon import TelegramClient
-from telethon.tl.types import Message
 import os
 import re
 from dotenv import load_dotenv
+from fastapi import Request
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -20,12 +22,14 @@ app = FastAPI()
 download_folder = "downloads"
 os.makedirs(download_folder, exist_ok=True)
 
-# URL для доступа к медиа (замени на свой, если нужно)
+# URL для доступа к медиа
 BASE_URL = "https://kali-linux-docker-production-ece2.up.railway.app"
 
 # Подключение папки со статикой
 app.mount("/media", StaticFiles(directory=download_folder), name="media")
 
+# Инициализация шаблонов
+templates = Jinja2Templates(directory="templates")
 
 # Функция извлечения username из ссылки или имени канала
 def extract_username(channel: str) -> str:
@@ -36,11 +40,25 @@ def extract_username(channel: str) -> str:
         return match.group(0)
     raise HTTPException(status_code=400, detail="Неверный формат имени канала")
 
+@app.get("/", response_class=HTMLResponse)
+async def get_form(request: Request):
+    return templates.TemplateResponse("login_form.html", {"request": request})
 
-@app.get("/")
-async def root():
-    return {"message": "Post media API is running"}
-
+@app.post("/authenticate")
+async def authenticate(request: Request, phone: str = Form(...), code: str = Form(...)):
+    # Инициализация клиента Telegram
+    client = TelegramClient(session_name, api_id, api_hash)
+    
+    # Подключение и аутентификация
+    await client.connect()
+    try:
+        # Отправляем код на номер
+        await client.send_code_request(phone)
+        # Авторизуемся с введенным кодом
+        await client.sign_in(phone, code)
+        return {"status": "success", "message": "Successfully authenticated"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/get_post_media")
 async def get_post_media(
@@ -61,17 +79,15 @@ async def get_post_media(
             "date": str(msg.date),
             "text": "",
             "url": f"https://t.me/{username}/{msg.id}",
-            "media": {}  # Словарь для нумерованных медиа
+            "media": {}
         }
 
         if msg.grouped_id:
-            # Получаем сообщения в группе (плюс-минус 10 вокруг)
             range_ids = list(range(msg.id - 10, msg.id + 10))
             nearby_msgs = await client.get_messages(username, ids=range_ids)
             grouped = [m for m in nearby_msgs if m and m.grouped_id == msg.grouped_id]
             grouped = sorted(grouped, key=lambda m: m.id)
 
-            # Берём первый текст, который найдётся
             for m in grouped:
                 if m.message:
                     result["text"] = m.message
@@ -85,7 +101,6 @@ async def get_post_media(
                     result["media"][key] = media_info
                     index += 1
         else:
-            # Одиночное сообщение
             result["text"] = msg.message or ""
             if msg.media:
                 media_info = await process_media(msg, media_index=1)
@@ -97,8 +112,6 @@ async def get_post_media(
 
     return {"status": "ok", "post": result}
 
-
-# Функция обработки и скачивания медиа с добавлением номера
 async def process_media(msg: Message, media_index: int = 0):
     if not msg.media:
         return None
@@ -109,7 +122,6 @@ async def process_media(msg: Message, media_index: int = 0):
     file_name_base = f"{msg.id}"
     file_name_ext = "media"
 
-    # Обработка документа
     if hasattr(media, "document") and media.document:
         attrs = media.document.attributes
         file_name_attr = None
@@ -126,26 +138,18 @@ async def process_media(msg: Message, media_index: int = 0):
                 file_name_ext = f"{file_name_base}.{ext}"
             else:
                 file_name_ext = f"{file_name_base}.media"
-
-    # Обработка фото
     elif hasattr(media, "photo") and media.photo:
         file_name_ext = f"{file_name_base}.jpg"
-
-    # Прочие типы медиа
     else:
         file_name_ext = f"{file_name_base}.media"
 
-    # Разделяем имя и расширение для вставки номера
     name_part, ext_part = os.path.splitext(file_name_ext)
 
     if media_index > 0:
-        # Вставляем media_index после id сообщения, перед остальным именем файла
-        # Пример: 45661_1_IMG_9245.MP4 или 45661_1.jpg
         if name_part.startswith(file_name_base):
-            suffix = name_part[len(file_name_base):]  # часть после id
+            suffix = name_part[len(file_name_base):]
             file_name = f"{file_name_base}_{media_index}{suffix}{ext_part}"
         else:
-            # Если имя нестандартное, просто добавим индекс в начало
             file_name = f"{file_name_base}_{media_index}_{name_part}{ext_part}"
     else:
         file_name = file_name_ext
