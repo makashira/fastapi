@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from telethon import TelegramClient
+from telethon.errors import SessionPasswordNeededError
 from telethon.tl.types import Message
 import os
 import re
@@ -46,18 +47,39 @@ async def get_form(request: Request):
     return templates.TemplateResponse("login_form.html", {"request": request})
 
 @app.post("/authenticate")
-async def authenticate(request: Request, phone: str = Form(...), code: str = Form(...)):
-    # Инициализация клиента Telegram
+async def authenticate(request: Request, phone: str = Form(...), code: str = Form(None), password: str = Form(None)):
     client = TelegramClient(session_name, api_id, api_hash)
+    
+    # Подключаемся к Telegram
     await client.connect()
+    
+    # Сначала отправляем код на номер телефона
     try:
-        # Отправляем код на номер
         await client.send_code_request(phone)
-        # Авторизуемся с введенным кодом
-        await client.sign_in(phone, code)
-        return {"status": "success", "message": "Successfully authenticated"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": f"Ошибка при отправке кода: {str(e)}"}
+    
+    # Запрашиваем код подтверждения
+    if not code:
+        return {"status": "waiting_for_code", "message": "Введите код, который вам пришел на телефон."}
+    
+    try:
+        # Попытка войти с кодом
+        await client.sign_in(phone, code)
+    except SessionPasswordNeededError:
+        # Если требуется пароль (включена двухфакторная аутентификация)
+        return {"status": "waiting_for_password", "message": "Введите ваш пароль."}
+    except Exception as e:
+        return {"status": "error", "message": f"Ошибка аутентификации: {str(e)}"}
+    
+    # Если пароль был введен
+    if password:
+        try:
+            await client.sign_in(password=password)
+        except Exception as e:
+            return {"status": "error", "message": f"Ошибка при вводе пароля: {str(e)}"}
+
+    return {"status": "success", "message": "Аутентификация успешна!"}
 
 @app.get("/get_post_media")
 async def get_post_media(
