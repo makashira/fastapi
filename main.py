@@ -4,7 +4,6 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
-from telethon.tl.types import Message
 import os
 import re
 from dotenv import load_dotenv
@@ -24,7 +23,7 @@ app = FastAPI()
 download_folder = "downloads"
 os.makedirs(download_folder, exist_ok=True)
 
-# URL для доступа к медиа (замени на свой, если нужно)
+# URL для доступа к медиа
 BASE_URL = "https://kali-linux-docker-production-ece2.up.railway.app"
 
 # Подключение папки со статикой
@@ -44,41 +43,40 @@ def extract_username(channel: str) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def get_form(request: Request):
-    return templates.TemplateResponse("login_form.html", {"request": request})
+    return templates.TemplateResponse("login_form.html", {"request": request, "step": "phone"})
 
 @app.post("/authenticate")
-async def authenticate(request: Request, phone: str = Form(...), code: str = Form(None), password: str = Form(None)):
+async def authenticate(request: Request, phone: str = Form(None), code: str = Form(None), password: str = Form(None)):
     client = TelegramClient(session_name, api_id, api_hash)
     
     # Подключаемся к Telegram
     await client.connect()
+
+    # Шаг 1: Ввод номера телефона
+    if phone and not code and not password:
+        try:
+            await client.send_code_request(phone)
+            return templates.TemplateResponse("login_form.html", {"request": request, "step": "code", "phone": phone})
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ошибка при отправке кода: {str(e)}")
     
-    # Сначала отправляем код на номер телефона
-    try:
-        await client.send_code_request(phone)
-    except Exception as e:
-        return {"status": "error", "message": f"Ошибка при отправке кода: {str(e)}"}
+    # Шаг 2: Ввод кода
+    if code and not password:
+        try:
+            await client.sign_in(phone, code)
+        except SessionPasswordNeededError:
+            return templates.TemplateResponse("login_form.html", {"request": request, "step": "password", "phone": phone})
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ошибка при вводе кода: {str(e)}")
     
-    # Запрашиваем код подтверждения
-    if not code:
-        return {"status": "waiting_for_code", "message": "Введите код, который вам пришел на телефон."}
-    
-    try:
-        # Попытка войти с кодом
-        await client.sign_in(phone, code)
-    except SessionPasswordNeededError:
-        # Если требуется пароль (включена двухфакторная аутентификация)
-        return {"status": "waiting_for_password", "message": "Введите ваш пароль."}
-    except Exception as e:
-        return {"status": "error", "message": f"Ошибка аутентификации: {str(e)}"}
-    
-    # Если пароль был введен
+    # Шаг 3: Ввод пароля
     if password:
         try:
             await client.sign_in(password=password)
         except Exception as e:
-            return {"status": "error", "message": f"Ошибка при вводе пароля: {str(e)}"}
+            raise HTTPException(status_code=400, detail=f"Ошибка при вводе пароля: {str(e)}")
 
+    # Завершение аутентификации
     return {"status": "success", "message": "Аутентификация успешна!"}
 
 @app.get("/get_post_media")
