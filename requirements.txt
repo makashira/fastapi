@@ -2,3 +2,4 @@ fastapi
 telethon
 python-dotenv
 hypercorn
+jinja2
