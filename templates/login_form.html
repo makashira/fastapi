@@ -7,19 +7,27 @@
 </head>
 <body>
     <h1>Enter your phone number and code</h1>
+
+    {% if step == "phone" %}
     <form method="POST" action="/authenticate">
         <label for="phone">Phone Number:</label>
-        <input type="text" id="phone" name="phone" required><br><br>
-        <label for="code">Code:</label>
-        <input type="text" id="code" name="code" required><br><br>
+        <input type="text" id="phone" name="phone" value="{{ phone }}" required><br><br>
         <button type="submit">Submit</button>
     </form>
-
-    <!-- Добавляем форму для пароля, если требуется -->
+    {% elif step == "code" %}
     <form method="POST" action="/authenticate">
-        <label for="password">Password:</label>
-        <input type="password" id="password" name="password" required><br><br>
+        <label for="code">Enter the code sent to your phone:</label>
+        <input type="text" id="code" name="code" required><br><br>
+        <input type="hidden" name="phone" value="{{ phone }}">
         <button type="submit">Submit</button>
     </form>
+    {% elif step == "password" %}
+    <form method="POST" action="/authenticate">
+        <label for="password">Enter your password:</label>
+        <input type="password" id="password" name="password" required><br><br>
+        <input type="hidden" name="phone" value="{{ phone }}">
+        <button type="submit">Submit</button>
+    </form>
+    {% endif %}
 </body>
 </html>
