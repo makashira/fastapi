@@ -3,3 +3,4 @@ telethon
 python-dotenv
 hypercorn
 jinja2
+python-multipart
